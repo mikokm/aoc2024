@@ -77,34 +77,69 @@ fn main() {
     println!("Orderings: {:?}", orderings);
 
     let mut middle_total = 0;
+    let mut fixed_middle_total = 0;
 
     for ordering in orderings {
         println!("Ordering: {:?}", &ordering);
-        let mut is_valid = true;
-        let mut seen = HashSet::new();
-        for page in &ordering {
-            println!("Current page: {}", &page);
-
-            seen.insert(page);
-
-            if let Some(dependents) = order_rules.get(&page) {
-                println!("Dependents: {:?}", &dependents);
-                for dependent in dependents {
-                    if seen.contains(dependent) {
-                        println!("Dependent {} in seen!", &dependent);
-                        is_valid = false;
-                    }
-                }
-            }
-        }
-
+        let is_valid = is_valid_ordering(&ordering, &order_rules);
         println!("Ordering is {}", if is_valid { "valid" } else { "invalid" });
 
         if is_valid {
             let middle = ordering.get((ordering.len() / 2) as usize);
             middle_total += middle.unwrap();
+        } else {
+            let ordering = fix_ordering(&ordering, &order_rules);
+            let middle = ordering.get((ordering.len() / 2) as usize);
+            fixed_middle_total += middle.unwrap();
         }
     }
 
     println!("Middle total: {}", middle_total);
+    println!("Fixed Middle total: {}", fixed_middle_total);
+}
+
+fn is_valid_ordering(ordering: &Vec<i32>, order_rules: &HashMap<i32, HashSet<i32>>) -> bool {
+    let mut is_valid = true;
+    let mut seen = HashSet::new();
+    for page in ordering {
+        // println!("Current page: {}", &page);
+
+        seen.insert(page);
+
+        if let Some(dependents) = order_rules.get(&page) {
+            // println!("Dependents: {:?}", &dependents);
+            for dependent in dependents {
+                if seen.contains(dependent) {
+                    // println!("Dependent {} in seen!", &dependent);
+                    is_valid = false;
+                }
+            }
+        }
+    }
+
+    is_valid
+}
+
+fn fix_ordering(ordering: &Vec<i32>, order_rules: &HashMap<i32, HashSet<i32>>) -> Vec<i32> {
+    println!("Fixing ordering: {:?}", &ordering);
+
+    let mut seen: HashSet<i32> = HashSet::new();
+    let mut new_ordering: Vec<i32> = vec![];
+    for page in ordering {
+        let mut insertion_point = new_ordering.len();
+        if let Some(dependents) = order_rules.get(page) {
+            for (i, e) in new_ordering.iter().enumerate() {
+                if dependents.contains(&e) {
+                    insertion_point = std::cmp::min(insertion_point, i);
+                }
+            }
+        }
+        new_ordering.insert(insertion_point, *page);
+        seen.insert(*page);
+    }
+
+    println!("Fixed ordering: {:?}", new_ordering);
+    assert!(is_valid_ordering(&new_ordering, &order_rules));
+
+    new_ordering
 }
