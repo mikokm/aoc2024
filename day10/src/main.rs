@@ -1,120 +1,88 @@
-use std::{fs::read_to_string, vec};
+use std::{collections::HashSet, fs::read_to_string};
+
+type Graph = Vec<Vec<u32>>;
 
 fn main() {
     let _file = read_to_string("input.txt").unwrap();
-    let input = r"190: 10 19
-3267: 81 40 27
-83: 17 5
-156: 15 6
-7290: 6 8 6 15
-161011: 16 10 13
-192: 17 8 14
-21037: 9 7 18 13
-292: 11 6 16 20";
-
+    let input = r"89010123
+78121874
+87430965
+96549874
+45678903
+32019012
+01329801
+10456732";
     let input = _file;
+
     // println!("{}", input);
-    let equations: Vec<(i64, Vec<i64>)> = input
+    let graph: Graph = input
         .lines()
-        .map(|s| {
-            let (first, rest) = s.split_once(':').unwrap();
-            // println!("{}:{}", first, rest);
-            (
-                first.parse::<i64>().unwrap(),
-                rest.trim_start()
-                    .split(' ')
-                    .map(|s| s.parse::<i64>().unwrap())
-                    .collect(),
-            )
-        })
+        .map(|s| s.chars().map(|c| c.to_digit(10).unwrap()).collect())
         .collect();
-    println!("{:?}", equations);
 
-    let mut result = 0;
-    for equation in equations {
-        if is_valid_equation(&equation) {
-            result += equation.0;
+    for row in &graph {
+        println!("{:?}", row);
+    }
+
+    let zeroes = find_zeros(&graph);
+    println!("Found {} zeroes {:?}", zeroes.len(), zeroes);
+
+    let mut routes = 0;
+    for zero in zeroes {
+        let ends = find_routes(&graph, zero, 0);
+        routes += ends.len();
+    }
+    println!("Routes: {:?}", routes);
+}
+
+fn find_zeros(g: &Graph) -> Vec<(i32, i32)> {
+    let mut result = vec![];
+    for (y, row) in g.iter().enumerate() {
+        for (x, c) in row.iter().enumerate() {
+            if *c == 0 {
+                result.push((x as i32, y as i32));
+            }
         }
     }
 
-    println!("Result: {}", result);
+    result
 }
 
-#[derive(Debug, Clone)]
-enum Symbol {
-    Add,
-    Mul,
-    Con,
-    Num(i64),
+fn is_in_graph(g: &Graph, x: i32, y: i32) -> bool {
+    y >= 0 && g.len() > y as usize && x >= 0 && g[0].len() > x as usize
 }
 
-fn is_valid_equation((target, terms): &(i64, Vec<i64>)) -> bool {
-    // println!("Target: {}, terms: {:?}", target, &terms);
-    let sign_len_to_gen = terms.len() - 1;
-    let mut signs: Vec<Vec<Symbol>> = vec![];
-    signs.push(vec![Symbol::Add]);
-    signs.push(vec![Symbol::Mul]);
-    signs.push(vec![Symbol::Con]);
+fn find_neighbour(g: &Graph, x: i32, y: i32, n: u32) -> Vec<(i32, i32)> {
+    let directions = [(0, -1), (0, 1), (1, 0), (-1, 0)];
+    let neighbours = directions.map(|(dx, dy)| (x + dx, y + dy)).to_vec();
+    neighbours
+        .iter()
+        .filter(|(x, y)| is_in_graph(&g, *x, *y) && g[*y as usize][*x as usize] == n)
+        .cloned()
+        .collect()
+}
 
-    for i in 1..sign_len_to_gen {
-        // Collect new combinations in a single expression
-        let new_lists: Vec<_> = signs
-            .iter()
-            .filter(|list| list.len() == i) // Filter lists of the desired length
-            .flat_map(|list| {
-                // Generate two new lists: one with Add, one with Mul
-                [Symbol::Add, Symbol::Mul, Symbol::Con]
-                    .into_iter()
-                    .map(move |symbol| {
-                        let mut new_list = list.clone();
-                        new_list.push(symbol);
-                        new_list
-                    })
-            })
-            .collect();
+fn find_routes(g: &Graph, start: (i32, i32), current_height: u32) -> HashSet<(i32, i32)> {
+    assert!(is_in_graph(&g, start.0, start.1));
 
-        signs.extend(new_lists); // Append all new lists to signs
+    let height = g[start.1 as usize][start.0 as usize];
+
+    if height != current_height {
+        return HashSet::new();
     }
 
-    // println!("signs: {:?}", signs);
-    for ops in signs.iter().filter(|list| list.len() == sign_len_to_gen) {
-        let equation: Vec<Symbol> = terms
-            .iter()
-            .cloned()
-            .enumerate()
-            .flat_map(|(i, term)| {
-                if i < ops.len() {
-                    vec![Symbol::Num(term), ops[i].clone()]
-                } else {
-                    vec![Symbol::Num(term)]
-                }
-            })
-            .collect();
-        // println!("eq: {:?}", equation);
-
-        let result: (i64, Option<Symbol>) =
-            equation.iter().fold((0, None), |(res, op), cur| match cur {
-                Symbol::Add => return (res, Some(Symbol::Add)),
-                Symbol::Mul => return (res, Some(Symbol::Mul)),
-                Symbol::Con => return (res, Some(Symbol::Con)),
-                Symbol::Num(n) => match op {
-                    Some(Symbol::Add) => return (res + n, None),
-                    Some(Symbol::Mul) => return (res * n, None),
-                    Some(Symbol::Con) => {
-                        let s = res.to_string() + &n.to_string();
-                        return (s.parse::<i64>().unwrap(), None);
-                    }
-                    None => return (res + n, None),
-                    _ => panic!("eep"),
-                },
-            });
-
-        if result.0 == *target {
-            return true;
-        }
-
-        // println!("{:?}", result);
+    if current_height == 9 {
+        return HashSet::from([start]);
     }
 
-    false
+    let next_height = current_height + 1;
+    let neighbours = find_neighbour(&g, start.0, start.1, next_height);
+
+    let mut all_ends = HashSet::new();
+    for neighbour in neighbours {
+        let ends = find_routes(&g, neighbour, next_height);
+        all_ends.extend(ends);
+    }
+
+    all_ends
 }
